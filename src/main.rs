@@ -1,4 +1,4 @@
-use git2::{Oid, Repository};
+use git2::{Oid, Repository, StatusOptions};
 use std::{env, fmt::Debug, format, path::PathBuf, thread, time, write};
 
 struct Watch {
@@ -33,9 +33,17 @@ impl Watch {
     }
 
     fn has_changed(&mut self) -> bool {
-        let statuses = self.repo.statuses(None).unwrap();
+        let mut status_opts = StatusOptions::new();
+        status_opts.include_untracked(false);
+        status_opts.include_ignored(false);
+        status_opts.exclude_submodules(false);
+
+        let statuses = self.repo.statuses(Some(&mut status_opts)).unwrap();
 
         if !statuses.is_empty() {
+            for st in statuses.iter() {
+                println!("File changed: {:?}", st.path().unwrap());
+            }
             true
         } else if self.get_latest_commit_id() != self.latest_commit {
             self.latest_commit = self.get_latest_commit_id();
@@ -87,8 +95,7 @@ fn main() {
 
     loop {
         let changed = watch_dog.has_changed();
-        println!("{:?}", watch_dog);
-        println!("{changed}");
+        println!("{:?}\n{changed}\n", watch_dog);
 
         thread::sleep(time::Duration::from_secs(5));
     }
