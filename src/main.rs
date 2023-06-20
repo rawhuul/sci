@@ -1,51 +1,72 @@
+mod dispatcher;
 mod watcher;
 
+use argh::FromArgs;
 use git2::Repository;
-use std::{env, format, path::PathBuf};
-use tokio::time::Duration;
+use serde_json;
+use std::net::SocketAddr;
+use std::{path::PathBuf, thread};
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
+use dispatcher::Dispatcher;
 use watcher::Watcher;
 
-fn open_repo(repo_path: &PathBuf) -> Option<Repository> {
-    Repository::open(repo_path).ok()
-}
-
-fn get_full_path(repo: &PathBuf) -> String {
-    let absolute_path = env::current_dir()
-        .expect("Failed to get current directory")
-        .join(&repo);
-
-    match absolute_path.canonicalize() {
-        Ok(path) => path.to_string_lossy().replace(r"\\?\", ""),
-        Err(_) => format!("{repo:?}"),
-    }
+#[derive(FromArgs)]
+/// A simple CI system.
+struct Args {
+    /// destination to repository
+    #[argh(positional)]
+    repo_path: PathBuf,
 }
 
 #[tokio::main]
-async fn main() {
-    let args: Vec<String> = env::args().collect();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Args = argh::from_env();
 
-    if args.len() != 2 {
-        println!("[ERROR]: Destination to repository must be passed.");
-        return;
-    }
+    let repo_path = args.repo_path;
+    let repo = Repository::open(&repo_path)?;
+    let mut watcher = Watcher::new(repo)?;
 
-    let repo_path = PathBuf::from(&args[1]);
-    let repo = open_repo(&repo_path);
+    let addr = "127.0.0.1:8080".parse()?;
+    let dispatcher = Dispatcher::new(addr);
 
-    if repo.is_none() {
-        println!("[ERROR]: {} is not a Git Repo.", get_full_path(&repo_path));
-        return;
-    }
+    // Spawn a Tokio task to run the dispatcher asynchronously
+    tokio::spawn(async move {
+        if let Err(err) = dispatcher.start().await {
+            eprintln!("Dispatcher error: {}", err);
+        }
+    });
 
-    let mut watch_dog = Watcher::new(repo.unwrap()).unwrap();
+    // Spawn a Tokio task to run the watcher asynchronously
+    tokio::spawn(async move {
+        loop {
+            if let Ok(changed) = watcher.watch() {
+                if let Some(change) = changed {
+                    let msg = serde_json::to_string(&change).unwrap();
+                    // println!("{msg}");
+                    if let Err(err) = send_change_to_dispatcher(&addr, &msg).await {
+                        eprintln!("Error sending message: {}", err);
+                    }
+                }
+            }
 
-    let mut interval = tokio::time::interval(Duration::from_secs(5));
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
 
+    // Keep the main thread alive
     loop {
-        interval.tick().await;
-        let changed = watch_dog.watch();
-
-        println!("{:?}\n{:?}\n", watch_dog, changed.unwrap().unwrap());
+        // Perform other operations if needed
+        thread::park();
     }
+}
+
+async fn send_change_to_dispatcher(
+    addr: &SocketAddr,
+    msg: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut stream = TcpStream::connect(addr).await?;
+    stream.write_all(msg.as_bytes()).await?;
+    Ok(())
 }

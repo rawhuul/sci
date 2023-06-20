@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 
 #[derive(Debug, Serialize, Deserialize)]
-enum ChangeType {
+enum ChangeKind {
     NewCommit,
     FileChange,
     Both,
 }
 
-impl Display for ChangeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for ChangeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::NewCommit => write!(f, "New Commit"),
             Self::FileChange => write!(f, "File Changes"),
@@ -21,7 +21,7 @@ impl Display for ChangeType {
 
 #[derive(Serialize, Deserialize)]
 pub struct Changes {
-    change_type: ChangeType,
+    kind: ChangeKind,
     files: Vec<String>,
     commit_id: Option<String>,
 }
@@ -29,7 +29,7 @@ pub struct Changes {
 impl Debug for Changes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Changes")
-            .field("change_type", &self.change_type)
+            .field("change_type", &self.kind)
             .field("files", &self.files)
             .field("commit_id", &self.commit_id)
             .finish()
@@ -37,11 +37,11 @@ impl Debug for Changes {
 }
 
 impl Changes {
-    fn new(change_type: ChangeType, files: Vec<String>, commit_id: Option<Oid>) -> Self {
+    fn new(change_type: ChangeKind, files: Vec<String>, commit_id: Option<Oid>) -> Self {
         let commit_id = commit_id.map(|oid| oid.to_string());
 
         Self {
-            change_type,
+            kind: change_type,
             files,
             commit_id,
         }
@@ -87,7 +87,7 @@ impl Watcher {
                 .collect();
             self.latest_commit = self.get_latest_commit_id()?;
             Ok(Some(Changes::new(
-                ChangeType::Both,
+                ChangeKind::Both,
                 files,
                 Some(self.latest_commit),
             )))
@@ -96,11 +96,11 @@ impl Watcher {
                 .iter()
                 .map(|st| st.path().unwrap().to_string())
                 .collect();
-            Ok(Some(Changes::new(ChangeType::FileChange, files, None)))
+            Ok(Some(Changes::new(ChangeKind::FileChange, files, None)))
         } else if self.get_latest_commit_id()? != self.latest_commit {
             self.latest_commit = self.get_latest_commit_id()?;
             Ok(Some(Changes::new(
-                ChangeType::NewCommit,
+                ChangeKind::NewCommit,
                 Vec::new(),
                 Some(self.latest_commit),
             )))
