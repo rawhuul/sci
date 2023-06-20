@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 argh = "0.1.10"
 git2 = "0.17.2"
+serde = { version = "1.0.164", features = ["serde_derive"] }
 tokio = { version = "1.28.2", features = ["time", "net", "full"] }
