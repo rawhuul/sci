@@ -1,64 +1,10 @@
-use git2::{Oid, Repository, StatusOptions};
-use std::{env, fmt::Debug, format, path::PathBuf, thread, time, write};
+mod watcher;
 
-struct Watch {
-    repo: Repository,
-    latest_commit: Oid,
-}
+use git2::Repository;
+use std::{env, format, path::PathBuf};
+use tokio::time::{sleep, Duration};
 
-impl Debug for Watch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Watch[repo: {:?}, latest_commit: {}]",
-            self.repo.workdir().unwrap(),
-            self.latest_commit
-        )
-    }
-}
-
-impl Watch {
-    fn new(repo: Repository) -> Self {
-        let latest_commit = repo
-            .head()
-            .expect("Failed to get HEAD reference")
-            .peel_to_commit()
-            .expect("Failed to peel HEAD to commit")
-            .id();
-
-        Self {
-            repo,
-            latest_commit,
-        }
-    }
-
-    fn has_changed(&mut self) -> bool {
-        let mut status_opts = StatusOptions::new();
-        status_opts.include_untracked(false);
-        status_opts.include_ignored(false);
-        status_opts.exclude_submodules(false);
-
-        let statuses = self.repo.statuses(Some(&mut status_opts)).unwrap();
-
-        if !statuses.is_empty() {
-            for st in statuses.iter() {
-                println!("File changed: {:?}", st.path().unwrap());
-            }
-            true
-        } else if self.get_latest_commit_id() != self.latest_commit {
-            self.latest_commit = self.get_latest_commit_id();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn get_latest_commit_id(&self) -> Oid {
-        let head = self.repo.head().unwrap();
-        let commit = head.peel_to_commit().unwrap();
-        commit.id()
-    }
-}
+use watcher::Watcher;
 
 fn open_repo(repo_path: &PathBuf) -> Option<Repository> {
     Repository::open(repo_path).ok()
@@ -75,7 +21,8 @@ fn get_full_path(repo: &PathBuf) -> String {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 2 {
@@ -91,12 +38,13 @@ fn main() {
         return;
     }
 
-    let mut watch_dog = Watch::new(repo.unwrap());
+    let mut watch_dog = Watcher::new(repo.unwrap());
+
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
 
     loop {
-        let changed = watch_dog.has_changed();
-        println!("{:?}\n{changed}\n", watch_dog);
-
-        thread::sleep(time::Duration::from_secs(5));
+        interval.tick().await;
+        let changed = watch_dog.watch();
+        println!("{:?}\n", watch_dog);
     }
 }
