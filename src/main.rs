@@ -2,7 +2,7 @@ mod watcher;
 
 use git2::Repository;
 use std::{env, format, path::PathBuf};
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
 
 use watcher::Watcher;
 
@@ -38,13 +38,14 @@ async fn main() {
         return;
     }
 
-    let mut watch_dog = Watcher::new(repo.unwrap());
+    let mut watch_dog = Watcher::new(repo.unwrap()).unwrap();
 
     let mut interval = tokio::time::interval(Duration::from_secs(5));
 
     loop {
         interval.tick().await;
         let changed = watch_dog.watch();
-        println!("{:?}\n", watch_dog);
+
+        println!("{:?}\n{:?}\n", watch_dog, changed.unwrap().unwrap());
     }
 }
