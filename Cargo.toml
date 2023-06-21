@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 argh = "0.1.10"
 git2 = "0.17.2"
+indicatif = { version = "0.17.5", features = ["tokio"] }
 md5 = "0.7.0"
 rand = "0.8.5"
 serde = { version = "1.0.164", features = ["serde_derive"] }
