@@ -1,4 +1,5 @@
 mod dispatcher;
+mod runner;
 mod utils;
 mod watcher;
 
@@ -27,10 +28,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let repo = Repository::open(&args.repo_path)?;
     let addr = format!("127.0.0.1:{}", args.port).parse()?;
+    let key = Utils::key();
 
     let mut watcher = Watcher::new(repo)?;
-    let utils = Utils::new(addr);
-    let dispatcher = Dispatcher::new(addr, utils.key());
+    let dispatcher = Dispatcher::new(&args.repo_path, addr, key);
 
     // Spawn a Tokio task to run the dispatcher asynchronously
     tokio::spawn(async move {
@@ -45,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(changed) = watcher.watch() {
                 if let Some(change) = changed {
                     let msg = serde_json::to_string(&change).unwrap();
-                    if let Err(err) = utils.send_msg(&msg).await {
+                    if let Err(err) = Utils::send_msg(&addr, key, &msg).await {
                         eprintln!("Error sending message: {}", err);
                     }
                 }

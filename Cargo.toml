@@ -7,10 +7,13 @@ edition = "2021"
 
 [dependencies]
 argh = "0.1.10"
+cargo = "0.71.0"
 git2 = "0.17.2"
 rand = "0.8.5"
+regex = "1.8.4"
 serde = { version = "1.0.164", features = ["serde_derive"] }
 serde_json = "1.0.97"
 tokio = { version = "1.28.2", features = ["full"] }
 tokio-stream = { version = "0.1.14", features = ["full"] }
 tokio-util = { version = "0.7.8", features = ["full"] }
+walkdir = "2.3.3"

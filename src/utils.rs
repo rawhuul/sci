@@ -1,32 +1,39 @@
 use rand::random;
+use std::env;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-pub struct Utils {
-    addr: SocketAddr,
-    key: u128,
-}
+pub struct Utils {}
 
 impl Utils {
-    pub fn new(addr: SocketAddr) -> Self {
-        Self {
-            addr,
-            key: generate_key(),
-        }
-    }
+    pub async fn send_msg(
+        addr: &SocketAddr,
+        key: u128,
+        msg: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let msg = format!("{:?}:{}", key, msg);
 
-    pub async fn send_msg(&self, msg: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let msg = format!("{:?}:{}", self.key, msg);
-
-        let mut stream = TcpStream::connect(self.addr).await?;
+        let mut stream = TcpStream::connect(addr).await?;
         stream.write_all(msg.as_bytes()).await?;
         Ok(())
     }
 
-    pub fn key(&self) -> u128 {
-        self.key
+    pub fn key() -> u128 {
+        generate_key()
+    }
+
+    pub fn get_full_path(repo: &PathBuf) -> String {
+        let absolute_path = env::current_dir()
+            .expect("Failed to get current directory")
+            .join(&repo);
+
+        match absolute_path.canonicalize() {
+            Ok(path) => path.to_string_lossy().replace(r"\\?\", ""),
+            Err(_) => format!("{repo:?}"),
+        }
     }
 }
 
