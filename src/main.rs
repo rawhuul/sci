@@ -26,11 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = argh::from_env();
 
     let repo = Repository::open(&args.repo_path)?;
-    let mut watcher = Watcher::new(repo)?;
-
     let addr = format!("127.0.0.1:{}", args.port).parse()?;
-    let utils = Utils::new(addr);
 
+    let mut watcher = Watcher::new(repo)?;
+    let utils = Utils::new(addr);
     let dispatcher = Dispatcher::new(addr, utils.key());
 
     // Spawn a Tokio task to run the dispatcher asynchronously
