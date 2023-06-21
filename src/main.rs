@@ -1,15 +1,13 @@
 mod dispatcher;
+mod utils;
 mod watcher;
 
 use argh::FromArgs;
 use git2::Repository;
-use serde_json;
-use std::net::SocketAddr;
 use std::{path::PathBuf, thread};
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
 
 use dispatcher::Dispatcher;
+use utils::Utils;
 use watcher::Watcher;
 
 #[derive(FromArgs)]
@@ -18,18 +16,22 @@ struct Args {
     /// destination to repository
     #[argh(positional)]
     repo_path: PathBuf,
+    /// port address for the dispatcher (default: 8080)
+    #[argh(option, short = 'p', default = "8080")]
+    port: u16,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Args = argh::from_env();
 
-    let repo_path = args.repo_path;
-    let repo = Repository::open(&repo_path)?;
+    let repo = Repository::open(&args.repo_path)?;
     let mut watcher = Watcher::new(repo)?;
 
-    let addr = "127.0.0.1:8080".parse()?;
-    let dispatcher = Dispatcher::new(addr);
+    let addr = format!("127.0.0.1:{}", args.port).parse()?;
+    let utils = Utils::new(addr);
+
+    let dispatcher = Dispatcher::new(addr, utils.key());
 
     // Spawn a Tokio task to run the dispatcher asynchronously
     tokio::spawn(async move {
@@ -44,8 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(changed) = watcher.watch() {
                 if let Some(change) = changed {
                     let msg = serde_json::to_string(&change).unwrap();
-                    // println!("{msg}");
-                    if let Err(err) = send_change_to_dispatcher(&addr, &msg).await {
+                    if let Err(err) = utils.send_msg(&msg).await {
                         eprintln!("Error sending message: {}", err);
                     }
                 }
@@ -60,13 +61,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Perform other operations if needed
         thread::park();
     }
-}
-
-async fn send_change_to_dispatcher(
-    addr: &SocketAddr,
-    msg: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream = TcpStream::connect(addr).await?;
-    stream.write_all(msg.as_bytes()).await?;
-    Ok(())
 }

@@ -1,17 +1,23 @@
 use crate::watcher::Changes;
 
-use std::net::SocketAddr;
-use tokio::net::{TcpListener, TcpStream};
+use md5::Digest;
+use std::{format, net::SocketAddr, time::Duration, todo};
+use tokio::{
+    io::AsyncBufReadExt,
+    net::{TcpListener, TcpStream},
+    time::sleep,
+};
 use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, LinesCodec};
 
 pub struct Dispatcher {
     addr: SocketAddr,
+    msg_key: Digest,
 }
 
 impl Dispatcher {
-    pub fn new(addr: SocketAddr) -> Self {
-        Dispatcher { addr }
+    pub fn new(addr: SocketAddr, msg_key: Digest) -> Self {
+        Dispatcher { addr, msg_key }
     }
 
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -20,8 +26,10 @@ impl Dispatcher {
         println!("Dispatcher listening on {}", self.addr);
 
         while let Ok((stream, _)) = listener.accept().await {
+            let k = self.msg_key.clone();
+
             tokio::spawn(async move {
-                if let Err(err) = Self::handle_client(stream).await {
+                if let Err(err) = Self::handle_client(stream, &k).await {
                     eprintln!("Error handling client: {}", err);
                 }
             });
@@ -30,30 +38,38 @@ impl Dispatcher {
         Ok(())
     }
 
-    async fn handle_client(stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-        let framed = FramedRead::new(stream, LinesCodec::new());
+    async fn handle_client(
+        stream: TcpStream,
+        msg_key: &Digest,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut reader = tokio::io::BufReader::new(stream);
+        let mut line = String::new();
 
-        // Process each line received from the client
-        let mut lines = framed.map(|result| match result {
-            Ok(line) => Self::handle_message(line),
-            Err(e) => eprintln!("Error reading line: {}", e),
-        });
+        loop {
+            let bytes_read = reader.read_line(&mut line).await?;
+            if bytes_read == 0 {
+                break;
+            }
 
-        // Process messages as they arrive
-        while let Some(_) = lines.next().await {
-            // Add a log statement or print statement here to see the received messages
-            // println!("Received message from client");
+            Self::handle_message(line.trim().to_string(), msg_key);
+
+            line.clear();
         }
 
         Ok(())
     }
 
-    fn handle_message(message: String) {
-        if let Ok(changes) = serde_json::from_str::<Changes>(&message) {
-            // Perform your desired action based on the received changes
-            println!("Received: {:?}", changes);
-            // Perform your specific action here
-            // ...
+    fn handle_message(message: String, msg_key: &Digest) {
+        if let Some((key, changes)) = message.split_once(":") {
+            if key == format!("{msg_key:?}") {
+                if let Ok(changes) = serde_json::from_str::<Changes>(&changes) {
+                    // Perform your desired action based on the received changes
+                    println!("Received: {:?}", changes);
+                    // Perform your specific action here
+                }
+            } else {
+                eprintln!("Unverified Message Recieved! Discarding..");
+            }
         } else {
             eprintln!("Invalid message format: {}", message);
         }
